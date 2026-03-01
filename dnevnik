@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="UTF-8">
+<title>Dnevnik</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<style>
+body { font-family: Arial, sans-serif; background: #f5f5f5; margin:0; padding:0;}
+header { background:#11192B; color:#e8e8e8; padding:20px; text-align:center; font-size:2em; font-weight:bold;}
+.container { width:90%; max-width:900px; margin:20px auto; }
+input, select, button, textarea { padding:5px; margin:5px 0; font-size:1em; }
+button { cursor:pointer; border:none; border-radius:5px; }
+.grade-btn { margin-right:5px; width:40px; height:40px; font-weight:bold; border-radius:50%; color:#fff; border:none; }
+.grade-red { background:red; }
+.grade-green { background:green; }
+.grade-item { background:#e3f2fd; margin:5px 0; padding:10px; border-radius:6px; }
+.grade-item div { margin:2px 0; }
+.student-select { margin-bottom:10px; }
+</style>
+</head>
+<body>
+<header>Dnevnik</header>
+<div class="container">
+<div id="loginDiv">
+<h2>Prijava</h2>
+<label for="username">Korisničko ime:</label>
+<input type="text" id="username">
+<label for="password">Zaporka:</label>
+<input type="password" id="password">
+<button onclick="login()">Prijavi se</button>
+<p id="loginMsg" style="color:red;"></p>
+</div>
+
+<div id="mainDiv" style="display:none;">
+<h2 id="welcomeText"></h2>
+
+<div id="adminPanel" style="display:none;">
+<label>Odaberite učenika:</label>
+<select id="studentSelect" class="student-select"></select>
+</div>
+
+<div id="classesDiv"></div>
+
+<div style="margin-top:20px;">
+<h3>Dodaj ocjenu / bilješku:</h3>
+<select id="classSelect"></select>
+<div id="gradeButtons"></div>
+<textarea id="biljeskaInput" placeholder="Bilješka..."></textarea>
+<button onclick="addEntry()">Dodaj</button>
+</div>
+
+<h3>Prosjek ocjena:</h3>
+<p id="avgText">-</p>
+
+</div>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCxhKiINbNGXUlzDU_weeQ0RI14D4oeEB4",
+  authDomain: "dnevnik-128.firebaseapp.com",
+  databaseURL: "https://dnevnik-128-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "dnevnik-128",
+  storageBucket: "dnevnik-128.firebasestorage.app",
+  messagingSenderId: "270662675574",
+  appId: "1:270662675574:web:1e9142cd8e3fde4e5e8357"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// Accounts
+const adminAccount = {username:"neosuperas@dnevnik.com", password:"NSdvnk"};
+const studentAccounts = [{username:"sssara@dnevnik.com", password:"SSara"}];
+const allStudents = ["sssara@dnevnik.com"];
+const classes = ["Rekreacija","Kromarski","Životne vještine","Crtanje","Python","Izrađivanje"];
+
+let currentUser = null;
+let isAdmin = false;
+
+// Populate class selects
+const classSelect = document.getElementById("classSelect");
+classes.forEach(c=>{ let opt=document.createElement("option"); opt.value=c; opt.textContent=c; classSelect.appendChild(opt); });
+
+// Grade buttons
+const gradeButtonsDiv = document.getElementById("gradeButtons");
+function createGradeButtons() {
+    gradeButtonsDiv.innerHTML="";
+    for(let i=1;i<=5;i++){
+        const btn=document.createElement("button");
+        btn.textContent=i;
+        btn.className="grade-btn "+(i<=2?"grade-red":"grade-green");
+        btn.onclick = ()=>{ document.getElementById("biljeskaInput").dataset.grade=i; };
+        gradeButtonsDiv.appendChild(btn);
+    }
+}
+createGradeButtons();
+
+// Login
+function login(){
+    const u = document.getElementById("username").value;
+    const p = document.getElementById("password").value;
+    if(u===adminAccount.username && p===adminAccount.password){
+        currentUser=u; isAdmin=true; showMain();
+    }else{
+        const student = studentAccounts.find(s=>s.username===u && s.password===p);
+        if(student){ currentUser=u; isAdmin=false; showMain(); }
+        else{ document.getElementById("loginMsg").textContent="Krivi korisnik ili zaporka!"; }
+    }
+}
+
+// Show main panel
+function showMain(){
+    document.getElementById("loginDiv").style.display="none";
+    document.getElementById("mainDiv").style.display="block";
+    document.getElementById("welcomeText").textContent = (isAdmin?"Administrator":"Učenik")+" "+currentUser;
+    if(isAdmin){ document.getElementById("adminPanel").style.display="block"; fillStudentSelect(); }
+    loadGrades();
+}
+
+// Fill student dropdown
+function fillStudentSelect(){
+    const sel = document.getElementById("studentSelect");
+    sel.innerHTML="";
+    allStudents.forEach(s=>{
+        const opt=document.createElement("option"); opt.value=s; opt.textContent=s; sel.appendChild(opt);
+    });
+}
+
+// Add grade/bilješka
+function addEntry(){
+    const selectedClass = document.getElementById("classSelect").value;
+    const biljeskaText = document.getElementById("biljeskaInput").value;
+    const gradeValue = document.getElementById("biljeskaInput").dataset.grade || null;
+    const student = isAdmin ? document.getElementById("studentSelect").value : currentUser;
+    if(!selectedClass || (!gradeValue && !biljeskaText)){ alert("Unesite ocjenu ili bilješku."); return; }
+    const newRef = firebase.database().ref(`grades/${student}/${selectedClass}`).push();
+    const data = gradeValue ? {value:parseInt(gradeValue), biljeska:biljeskaText} : {biljeska:biljeskaText};
+    newRef.set(data);
+    document.getElementById("biljeskaInput").value="";
+    document.getElementById("biljeskaInput").dataset.grade="";
+    loadGrades();
+}
+
+// Load grades
+function loadGrades(){
+    const student = isAdmin ? document.getElementById("studentSelect").value : currentUser;
+    const div = document.getElementById("classesDiv"); div.innerHTML="";
+    let total=0, count=0;
+    classes.forEach(cls=>{
+        const clsRef = firebase.database().ref(`grades/${student}/${cls}`);
+        clsRef.once("value").then(snapshot=>{
+            const data = snapshot.val(); 
+            if(!data) return;
+            const clsDiv=document.createElement("div");
+            const clsTitle=document.createElement("h3"); clsTitle.textContent=cls; clsDiv.appendChild(clsTitle);
+            Object.keys(data).forEach(key=>{
+                const item=data[key];
+                const gradeDiv=document.createElement("div"); gradeDiv.className="grade-item";
+                if(item.value){
+                    gradeDiv.innerHTML=`Ocjena: ${item.value}<br>Bilješka: ${item.biljeska||""}`;
+                    total+=item.value; count++;
+                }else{
+                    gradeDiv.innerHTML=`Bilješka: ${item.biljeska||""}`;
+                }
+                // Edit and delete buttons
+                const editBtn=document.createElement("button"); editBtn.textContent="Uredi"; editBtn.style.marginLeft="5px";
+                editBtn.onclick=()=>{ editGrade(student, cls, key, item); };
+                const delBtn=document.createElement("button"); delBtn.textContent="Izbriši"; delBtn.style.marginLeft="5px";
+                delBtn.onclick=()=>{ if(confirm("Obrisati?")){ firebase.database().ref(`grades/${student}/${cls}/${key}`).remove().then(loadGrades); } };
+                gradeDiv.appendChild(editBtn); gradeDiv.appendChild(delBtn);
+                clsDiv.appendChild(gradeDiv);
+            });
+            div.appendChild(clsDiv);
+            document.getElementById("avgText").textContent = count>0 ? (total/count).toFixed(2) : "-";
+        });
+    });
+}
+
+// Edit function
+function editGrade(student, cls, key, item){
+    const gradeVal = item.value||"";
+    const bilj = item.biljeska||"";
+    const newVal = prompt("Nova ocjena (ostavi prazno za samo bilješku):", gradeVal);
+    const newBilj = prompt("Nova bilješka:", bilj);
+    const updated = newVal ? {value:parseInt(newVal), biljeska:newBilj} : {biljeska:newBilj};
+    firebase.database().ref(`grades/${student}/${cls}/${key}`).update(updated).then(loadGrades);
+}
+
+// Refresh grades when selecting a student (admin)
+if(isAdmin){
+    document.getElementById("studentSelect").onchange=loadGrades;
+}
+</script>
+</body>
+</html>
