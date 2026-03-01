@@ -16,7 +16,17 @@
   .class-frame:hover { box-shadow: 0 6px 12px rgba(0,0,0,0.2);}
   .class-header { display:flex; justify-content: space-between; align-items:center; cursor:pointer; font-weight:bold; font-size:1.1em; }
   .grades { display: flex; flex-direction: column; margin-top: 10px; overflow:hidden; transition: max-height 0.3s ease;}
-  .grade-item { display: flex; flex-direction: column; padding: 10px 10px; margin: 3px 0; background: #e3f2fd; border-radius: 6px; font-size: 1em; color: #111; }
+  .grade-item { 
+    display: flex; 
+    flex-direction: column; 
+    justify-content: flex-start; 
+    padding: 10px 10px; 
+    margin: 3px 0; 
+    background: #e3f2fd; 
+    border-radius: 6px; 
+    font-size: 1em; 
+    color: #111; 
+  }
   .grade-item span { margin: 2px 0; }
   .grade-item span.biljeska { font-size: 0.85em; color: #555; margin-left:0; }
   .grade-buttons { margin-top: 10px; display:flex; flex-wrap:wrap;}
@@ -30,7 +40,7 @@
   .grade-item button.del-btn { margin-left:5px; background:#f44336; color:white; align-self:flex-end; }
   .grade-item button.del-btn:hover { background:#d32f2f; }
   @media (max-width:500px){ input, select, button { width:100%; margin-top:5px; } }
-  #final-average, #class-average { font-weight:bold; margin-top:15px; font-size:1.1em; text-align:right; }
+  #final-average { font-weight:bold; margin-top:15px; font-size:1.1em; text-align:right; }
 </style>
 </head>
 <body>
@@ -56,42 +66,58 @@
 </div>
 
 <script>
-const GRADES_JSON_URL = "https://api.jsonsilo.com/public/2e1e8cc8-f9b6-4a5f-8899-d0a7e2dadcd8";
-
+/* CONFIG */
 const ADMIN = {username:"neosuperas@dnevnik.com", password:"NSdvnk"};
 const STUDENTS = [
     {username:"sssara@dnevnik.com", password:"SSara"}
 ];
 const classNames = ["Rekreacija","Kromarski","Životne vještine","Crtanje","Python","Izrađivanje"];
+const GRADES_JSON_URL = "https://api.jsonsilo.com/public/2e1e8cc8-f9b6-4a5f-8899-d0a7e2dadcd8";
+const JSONSILO_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX3V1aWQiOiJoUTF6dUNEUXlGZmgyNTFpQzNBNjZoaWVnN28yIiwiaXNzIjoiaHR0cHM6Ly9qc29uc2lsby5jb20iLCJleHAiOjE3NzQ5OTU5NDJ9.Bh69TDwEeoKXiBKkGRLpf643u8cinVlxsZZWsUImX6o";
 
-let data = {}; // grades data
-let currentUser = null;
-let isAdmin = false;
-let selectedStudent = null;
+let data={}, currentUser=null, isAdmin=false, selectedStudent=null;
 
-// LOAD DATA
+/* LOAD DATA FROM JSONSILO */
 async function loadData(){
     try{
         const res = await fetch(GRADES_JSON_URL);
         if(!res.ok) throw new Error("Ne mogu dohvatiti JSON");
         data = await res.json();
     }catch(e){
-        console.log("Fallback localStorage:", e);
+        console.log("Fallback na localStorage zbog greške:", e);
         data = JSON.parse(localStorage.getItem('grades')) || {};
     }
-    for(let s of STUDENTS){
+    for(let s of STUDENTS){ 
         if(!data[s.username]){
-            data[s.username] = {};
-            for(let cls of classNames) data[s.username][cls] = [];
+            data[s.username]={};
+            for(let cls of classNames) data[s.username][cls]=[];
         }
     }
+    localStorage.setItem('grades', JSON.stringify(data));
 }
-loadData();
 
-// LOGIN
+/* SAVE DATA TO JSONSILO */
+async function saveData(){
+    localStorage.setItem('grades', JSON.stringify(data));
+    if(!isAdmin) return;
+    try{
+        await fetch("https://api.jsonsilo.com/public/2e1e8cc8-f9b6-4a5f-8899-d0a7e2dadcd8",{
+            method:"PUT",
+            headers:{
+                "Content-Type":"application/json",
+                "Authorization":"Bearer "+JSONSILO_KEY
+            },
+            body: JSON.stringify(data)
+        });
+    }catch(e){
+        console.log("Greška pri spremanju JSONSILO:", e);
+    }
+}
+
+/* LOGIN/LOGOUT */
 function login(){
-    const user = document.getElementById("username").value;
-    const pass = document.getElementById("password").value;
+    const user=document.getElementById("username").value;
+    const pass=document.getElementById("password").value;
     if(user===ADMIN.username && pass===ADMIN.password){
         isAdmin=true; currentUser=ADMIN.username;
         document.getElementById("student-select-container").style.display="block";
@@ -107,26 +133,24 @@ function login(){
     renderClasses();
 }
 
-// LOGOUT
 function logout(){
     currentUser=null; selectedStudent=null;
     document.getElementById("login").style.display="block";
     document.getElementById("main").style.display="none";
 }
 
-// ADMIN SELECT STUDENT
+/* ADMIN SELECT STUDENT */
 function populateStudentSelect(){
-    const sel = document.getElementById("student-select");
-    sel.innerHTML = "";
+    const sel=document.getElementById("student-select");
+    sel.innerHTML="";
     for(let s of STUDENTS){
-        const opt = document.createElement("option");
-        opt.value = s.username; opt.textContent = s.username;
-        sel.appendChild(opt);
+        const opt=document.createElement("option");
+        opt.value=s.username; opt.textContent=s.username; sel.appendChild(opt);
     }
-    sel.onchange = ()=>{ selectedStudent=sel.value; renderClasses(); };
+    sel.onchange=()=>{ selectedStudent=sel.value; renderClasses(); };
 }
 
-// CALCULATE FINAL AVERAGE
+/* CALCULATE AVERAGES */
 function calculateFinalAverage(userGrades){
     let sum=0, count=0;
     for(let cls of classNames){
@@ -134,65 +158,63 @@ function calculateFinalAverage(userGrades){
             if(g.value){ sum+=g.value; count++; }
         }
     }
-    return count===0 ? "-" : (sum/count).toFixed(2);
+    return count===0?"-":(sum/count).toFixed(2);
 }
 
-// CALCULATE CLASS AVERAGE
 function calculateClassAverage(grades){
     let sum=0,count=0;
     for(let g of grades){
         if(g.value){ sum+=g.value; count++; }
     }
-    return count===0 ? "-" : (sum/count).toFixed(2);
+    return count===0?"-":(sum/count).toFixed(2);
 }
 
-// RENDER CLASSES
+/* RENDER CLASSES */
 function renderClasses(){
     const container=document.getElementById("classes");
     container.innerHTML="";
-    const userGrades = isAdmin ? data[selectedStudent] : data[currentUser];
+    const userGrades=isAdmin?data[selectedStudent]:data[currentUser];
 
     for(let cls of classNames){
-        const frame = document.createElement("div"); frame.className="class-frame";
-        const avg = calculateClassAverage(userGrades[cls]);
-        const header = document.createElement("div"); header.className="class-header"; header.textContent=cls + " (Prosjek: " + avg + ")";
-        const gradesDiv = document.createElement("div"); gradesDiv.className="grades"; gradesDiv.style.maxHeight="500px";
+        const frame=document.createElement("div"); frame.className="class-frame";
+        const avg=calculateClassAverage(userGrades[cls]);
+        const header=document.createElement("div"); header.className="class-header"; header.textContent=cls+" (Prosjek: "+avg+")";
+        const gradesDiv=document.createElement("div"); gradesDiv.className="grades"; gradesDiv.style.maxHeight="500px";
         header.onclick=()=>{ gradesDiv.style.maxHeight = gradesDiv.style.maxHeight==="0px"?"500px":"0px"; };
         frame.appendChild(header);
 
-        for(let i=0;i<userGrades[cls].length;i++){
-            const g=userGrades[cls][i];
+        userGrades[cls].forEach((g,i)=>{
             const item=document.createElement("div"); item.className="grade-item";
             if(g.value){ item.innerHTML=`<span>Ocjena: ${g.value}</span><span class="biljeska">Bilješka: ${g.biljeska||""}</span>`; }
             else{ item.innerHTML=`<span class="biljeska">Bilješka: ${g.biljeska||""}</span>`; }
 
             if(isAdmin){
-                const editBtn = document.createElement("button"); editBtn.textContent="Uredi"; editBtn.className="edit-btn";
-                editBtn.onclick = ()=>{
-                    const newValue = g.value ? prompt("Promijeni ocjenu:", g.value) : null;
-                    if(newValue) g.value=parseInt(newValue);
-                    const newBiljeska = prompt("Promijeni bilješku:", g.biljeska||"");
-                    g.biljeska=newBiljeska;
+                const editBtn=document.createElement("button"); editBtn.textContent="Uredi"; editBtn.className="edit-btn";
+                editBtn.onclick=()=>{
+                    const newVal=g.value?parseInt(prompt("Promijeni ocjenu:", g.value)) : null;
+                    if(newVal) g.value=newVal;
+                    const newNote=prompt("Promijeni bilješku:", g.biljeska||"");
+                    g.biljeska=newNote;
                     saveData(); renderClasses();
                 };
-                const delBtn = document.createElement("button"); delBtn.textContent="Izbriši"; delBtn.className="del-btn";
+                const delBtn=document.createElement("button"); delBtn.textContent="Izbriši"; delBtn.className="del-btn";
                 delBtn.onclick=()=>{ userGrades[cls].splice(i,1); saveData(); renderClasses(); };
                 item.appendChild(editBtn); item.appendChild(delBtn);
             }
+
             gradesDiv.appendChild(item);
-        }
+        });
 
         frame.appendChild(gradesDiv);
 
         if(isAdmin){
             const addBtn=document.createElement("button"); addBtn.textContent="Dodaj ocjenu";
-            addBtn.onclick=()=>showGradeButtons(cls, frame, userGrades);
-            frame.appendChild(addBtn);
+            addBtn.onclick=()=>showGradeButtons(cls, frame, userGrades); frame.appendChild(addBtn);
 
             const addNoteBtn=document.createElement("button"); addNoteBtn.textContent="Dodaj bilješku";
             addNoteBtn.onclick=()=>{
-                const biljeska = prompt("Unesite bilješku:");
-                if(biljeska){ userGrades[cls].push({biljeska:biljeska}); renderClasses(); }
+                const note=prompt("Unesite bilješku:");
+                if(note){ userGrades[cls].push({biljeska:note}); renderClasses(); }
             };
             frame.appendChild(addNoteBtn);
         }
@@ -200,7 +222,6 @@ function renderClasses(){
         container.appendChild(frame);
     }
 
-    // FINAL AVERAGE
     const finalAvg=calculateFinalAverage(userGrades);
     const finalAvgDiv=document.getElementById("final-average");
     finalAvgDiv.textContent="Konačni prosjek: "+finalAvg;
@@ -209,16 +230,15 @@ function renderClasses(){
     saveData();
 }
 
-// SHOW GRADE BUTTONS
+/* SHOW GRADE BUTTONS */
 function showGradeButtons(cls, frame, userGrades){
     const existing=frame.querySelector(".grade-buttons"); if(existing) existing.remove();
     const panel=document.createElement("div"); panel.className="grade-buttons";
     for(let g=1;g<=5;g++){
-        const btn=document.createElement("button"); btn.textContent=g;
-        btn.className=(g<=2)?"red":"green";
+        const btn=document.createElement("button"); btn.textContent=g; btn.className=(g<=2)?"red":"green";
         btn.onclick=()=>{
-            const biljeska=prompt("Unesite bilješku za ocjenu "+g+":");
-            userGrades[cls].push({value:g,biljeska:biljeska});
+            const note=prompt("Unesite bilješku za ocjenu "+g+":");
+            userGrades[cls].push({value:g,biljeska:note});
             renderClasses();
         };
         panel.appendChild(btn);
@@ -226,20 +246,8 @@ function showGradeButtons(cls, frame, userGrades){
     frame.appendChild(panel);
 }
 
-// SAVE DATA
-function saveData(){
-    localStorage.setItem('grades', JSON.stringify(data));
-
-    // push to JSONKeeper
-    if(isAdmin){
-        fetch(GRADES_JSON_URL, {
-            method:'PUT',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify(data)
-        }).then(res=>console.log("JSON saved:", res.status))
-          .catch(e=>console.log("Error saving JSON:", e));
-    }
-}
+/* INITIALIZE */
+loadData();
 </script>
 </body>
 </html>
